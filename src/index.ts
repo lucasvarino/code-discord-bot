@@ -18,25 +18,19 @@ client.on("ready", () => {
   console.log("Ready!");
 });
 
-client.on("messageCreate", function (message) {
-  console.log(`a message was created`);
-  console.log({ message });
-});
-
 client.on("voiceStateUpdate", async (oldState, newState) => {
   // Verificar se o usuário que entrou existe no banco de dados
 
   if (newState.member?.user.bot) return;
+  const nickname =
+    newState.member?.nickname || newState.member?.user.username || "";
 
   if (oldState.channelId === null && newState.channelId !== null) {
     // O usuário entrou em um canal de voz
 
     if (newState.member?.user) {
-      const user = await verifyUser(newState.member.user);
-      console.log("O usuário entrou num canal de voz -> " + user.username);
-
-      const activity = await createActivity(newState.member.user);
-      console.log("Atividade criada -> " + activity.id);
+      const user = await verifyUser(newState.member.user, nickname);
+      const activity = await createActivity(newState.member.user, nickname);
     }
   }
 
@@ -46,10 +40,9 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
     // O usuário saiu de um canal de voz
 
     if (oldState.member?.user) {
-      const user = await verifyUser(oldState.member.user);
-      console.log("O usuário saiu de um canal de voz -> " + user.username);
+      const user = await verifyUser(oldState.member.user, nickname);
 
-      const activity = await prisma.atividade.findFirst({
+      let activity = await prisma.atividade.findFirst({
         where: {
           userId: user.id,
           finalDate: null,
@@ -68,7 +61,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
       });
 
       if (updateFinalDate.finalDate)
-        await prisma.atividade.update({
+        activity = await prisma.atividade.update({
           where: {
             id: activity.id,
           },
@@ -79,13 +72,25 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
           },
         });
 
-      console.log("Atividade finalizada -> " + activity.id);
-      console.log("Tempo total -> " + activity.totalTime);
+      const totalWeeklyTime = await userTotalTime(
+        oldState.member.user,
+        nickname
+      );
+      console.log(
+        "Total de tempo na semana do usuário " +
+          user.username +
+          ": " +
+          totalWeeklyTime.toFixed(2) +
+          " horas"
+      );
     }
   }
 });
 
-const verifyUser = async (discordUser: User): Promise<Usuario> => {
+const verifyUser = async (
+  discordUser: User,
+  nickname: string
+): Promise<Usuario> => {
   const userBanco = await prisma.usuario.findUnique({
     where: {
       discordId: discordUser.id,
@@ -96,7 +101,7 @@ const verifyUser = async (discordUser: User): Promise<Usuario> => {
     return await prisma.usuario.create({
       data: {
         discordId: discordUser.id,
-        username: discordUser.username,
+        username: nickname,
         avatarUrl:
           discordUser.avatarURL() ||
           "https://cdn.discordapp.com/embed/avatars/0.png",
@@ -107,8 +112,8 @@ const verifyUser = async (discordUser: User): Promise<Usuario> => {
   return userBanco;
 };
 
-const createActivity = async (user: User) => {
-  const userBanco = await verifyUser(user);
+const createActivity = async (user: User, nickname: string) => {
+  const userBanco = await verifyUser(user, nickname);
 
   const activity = await prisma.atividade.create({
     data: {
@@ -120,4 +125,36 @@ const createActivity = async (user: User) => {
   });
 
   return activity;
+};
+
+const userTotalTime = async (user: User, nickname: string) => {
+  const userBanco = await verifyUser(user, nickname);
+
+  const activities = await prisma.atividade.findMany({
+    where: {
+      userId: userBanco.id,
+    },
+  });
+
+  let totalWeeklyTime = 0;
+
+  activities.forEach((activity) => {
+    if (activity.totalTime) {
+      totalWeeklyTime += activity.totalTime;
+
+      //Transformar o tempo em horas
+      totalWeeklyTime = totalWeeklyTime / 1000 / 60 / 60;
+    }
+  });
+
+  await prisma.usuario.update({
+    where: {
+      id: userBanco.id,
+    },
+    data: {
+      totalWeeklyTime,
+    },
+  });
+
+  return totalWeeklyTime;
 };
