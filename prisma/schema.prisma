@@ -10,22 +10,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        Int      @id @default(autoincrement())
-  username  String
-  discordId String   @unique
-  avatarUrl String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Usuario {
+  id              Int      @id @default(autoincrement())
+  username        String
+  discordId       String   @unique
+  avatarUrl       String?  @unique @default("https://cdn.discordapp.com/embed/avatars/0.png")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  totalWeeklyTime Float
 
-  activie    Activity @relation(fields: [activityId], references: [id])
-  activityId Int
+  activities Atividade[]
+
+  @@map("users")
 }
 
-model Activity {
-  id          Int      @id @default(autoincrement())
-  initialDate DateTime
-  finalDate   DateTime
+model Atividade {
+  id          Int       @id @default(autoincrement())
+  initialDate DateTime  @default(now())
+  finalDate   DateTime?
   totalTime   Float
-  users       User[]
+
+  user   Usuario @relation(fields: [userId], references: [id])
+  userId Int
+
+  @@map("activities")
 }

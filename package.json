@@ -6,8 +6,10 @@
   "author": "lucasvarino",
   "license": "MIT",
   "dependencies": {
+    "@discordjs/voice": "^0.14.0",
     "@prisma/client": "4.9.0",
     "discord.js": "^14.7.1",
+    "djs-voice": "^1.2.0",
     "dotenv": "^16.0.3",
     "prisma": "^4.9.0"
   },
