@@ -1,4 +1,4 @@
-import { Client, User } from "discord.js";
+import { Client, User, AttachmentBuilder } from "discord.js";
 import { config } from "dotenv";
 
 import { Prisma, PrismaClient, Usuario } from "@prisma/client";
@@ -9,7 +9,13 @@ const prisma = new PrismaClient();
 config();
 
 const client = new Client({
-  intents: ["Guilds", "GuildMessages", "GuildVoiceStates"],
+  intents: [
+    "Guilds",
+    "GuildMessages",
+    "GuildVoiceStates",
+    "GuildMessages",
+    "MessageContent",
+  ],
 });
 
 client.login(process.env.TOKEN);
@@ -127,6 +133,10 @@ const createActivity = async (user: User, nickname: string) => {
   return activity;
 };
 
+const deleteAllActivities = async () => {
+  await prisma.atividade.deleteMany();
+};
+
 const userTotalTime = async (user: User, nickname: string) => {
   const userBanco = await verifyUser(user, nickname);
 
@@ -141,11 +151,10 @@ const userTotalTime = async (user: User, nickname: string) => {
   activities.forEach((activity) => {
     if (activity.totalTime) {
       totalWeeklyTime += activity.totalTime;
-
-      //Transformar o tempo em horas
-      totalWeeklyTime = totalWeeklyTime / 1000 / 60 / 60;
     }
   });
+
+  totalWeeklyTime = totalWeeklyTime / 1000 / 60 / 60;
 
   await prisma.usuario.update({
     where: {
@@ -158,3 +167,71 @@ const userTotalTime = async (user: User, nickname: string) => {
 
   return totalWeeklyTime;
 };
+
+client.on("messageCreate", async (message) => {
+  if (message.content === "!sede") {
+    const user = await verifyUser(message.author, message.author.username);
+
+    if (!user) {
+      message.reply("Você não está cadastrado no banco de dados.");
+      return;
+    }
+
+    const totalWeeklyTime = await userTotalTime(
+      message.author,
+      message.author.username
+    );
+    message.reply(
+      "Olá " +
+        user.username +
+        ", você já passou " +
+        totalWeeklyTime.toFixed(2) +
+        " horas na sede essa semana."
+    );
+  }
+});
+
+client.on("messageCreate", async (message) => {
+  if (message.content === "!exportar") {
+    const users = await (
+      await prisma.usuario.findMany()
+    ).sort((a, b) => {
+      return b.totalWeeklyTime - a.totalWeeklyTime;
+    });
+
+    // O título do csv será "Horário de Sede dd/mm/yyyy - dd/mm/yyyy"
+
+    const firstDayOfWeek = new Date();
+    firstDayOfWeek.setDate(firstDayOfWeek.getDate() - firstDayOfWeek.getDay());
+    const lastDayOfWeek = new Date();
+    lastDayOfWeek.setDate(
+      lastDayOfWeek.getDate() + (6 - lastDayOfWeek.getDay())
+    );
+
+    let csv =
+      "Horário de Sede " +
+      firstDayOfWeek.toLocaleDateString() +
+      " - " +
+      lastDayOfWeek.toLocaleDateString() +
+      "\n\n";
+
+    users.forEach((user) => {
+      csv += user.username + ";" + user.totalWeeklyTime.toFixed(2) + "\n";
+    });
+
+    const attachment = new AttachmentBuilder(Buffer.from(csv), {
+      name:
+        "sede - " +
+        firstDayOfWeek.toLocaleDateString() +
+        " - " +
+        lastDayOfWeek.toLocaleDateString() +
+        ".csv",
+    });
+
+    message.reply({ files: [attachment] });
+
+    deleteAllActivities();
+
+    message.reply("O horário de sede foi resetado para essa semana.");
+  }
+});
