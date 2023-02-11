@@ -21,7 +21,9 @@ const saideirasId = [
     process.env.ESTUDOS_ID,
 ];
 client.login(process.env.TOKEN);
-client.on("ready", () => { });
+client.on("ready", () => {
+    console.log("Bot iniciado com sucesso!");
+});
 client.on("voiceStateUpdate", async (oldState, newState) => {
     if (saideirasId.includes(newState.channelId || oldState.channelId || ""))
         return;
@@ -141,7 +143,8 @@ const userTotalTime = async (user, nickname) => {
 };
 client.on("messageCreate", async (message) => {
     if (message.content === "!sede") {
-        const user = await verifyUser(message.author, message.author.username);
+        const nickname = message.member?.nickname || message.member?.user.username || "";
+        const user = await verifyUser(message.author, nickname);
         if (!user) {
             message.reply("Você não está cadastrado no banco de dados.");
             return;
