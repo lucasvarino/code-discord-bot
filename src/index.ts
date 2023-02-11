@@ -1,5 +1,6 @@
-import { Client, User, AttachmentBuilder } from "discord.js";
+import { Client, User, AttachmentBuilder, TextChannel } from "discord.js";
 import { config } from "dotenv";
+import { schedule } from "node-cron";
 
 import { Prisma, PrismaClient, Usuario } from "@prisma/client";
 
@@ -18,6 +19,12 @@ const client = new Client({
   ],
 });
 
+const saideirasId = [
+  process.env.SAIDEIRA_ID,
+  process.env.CAIDEIRA_ID,
+  process.env.ESTUDOS_ID,
+];
+
 client.login(process.env.TOKEN);
 
 client.on("ready", () => {
@@ -25,6 +32,15 @@ client.on("ready", () => {
 });
 
 client.on("voiceStateUpdate", async (oldState, newState) => {
+  // Verificar se o canal de voz é o canal de voz da sede
+  if (saideirasId.includes(newState.channelId || oldState.channelId || ""))
+    return;
+
+  // Verificar se o usuário que entrou não tem o cargo chamado "Membro"
+  if (!newState.member?.roles.cache.find((role) => role.name === "Membro")) {
+    return;
+  }
+
   // Verificar se o usuário que entrou existe no banco de dados
 
   if (newState.member?.user.bot) return;
@@ -44,7 +60,7 @@ client.on("voiceStateUpdate", async (oldState, newState) => {
 
   if (oldState.channelId !== null && newState.channelId === null) {
     // O usuário saiu de um canal de voz
-
+    console.log("O usuário " + nickname + " saiu do canal de voz.");
     if (oldState.member?.user) {
       const user = await verifyUser(oldState.member.user, nickname);
 
@@ -135,6 +151,11 @@ const createActivity = async (user: User, nickname: string) => {
 
 const deleteAllActivities = async () => {
   await prisma.atividade.deleteMany();
+  await prisma.usuario.updateMany({
+    data: {
+      totalWeeklyTime: 0,
+    },
+  });
 };
 
 const userTotalTime = async (user: User, nickname: string) => {
@@ -191,47 +212,88 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-client.on("messageCreate", async (message) => {
-  if (message.content === "!exportar") {
-    const users = await (
-      await prisma.usuario.findMany()
-    ).sort((a, b) => {
-      return b.totalWeeklyTime - a.totalWeeklyTime;
-    });
+const exportar = async () => {
+  const users = await (
+    await prisma.usuario.findMany()
+  ).sort((a, b) => {
+    return b.username < a.username ? 1 : -1;
+  });
 
-    // O título do csv será "Horário de Sede dd/mm/yyyy - dd/mm/yyyy"
+  const firstDayOfWeek = new Date();
+  firstDayOfWeek.setDate(firstDayOfWeek.getDate() - firstDayOfWeek.getDay());
+  const lastDayOfWeek = new Date();
+  lastDayOfWeek.setDate(lastDayOfWeek.getDate() + (6 - lastDayOfWeek.getDay()));
 
-    const firstDayOfWeek = new Date();
-    firstDayOfWeek.setDate(firstDayOfWeek.getDate() - firstDayOfWeek.getDay());
-    const lastDayOfWeek = new Date();
-    lastDayOfWeek.setDate(
-      lastDayOfWeek.getDate() + (6 - lastDayOfWeek.getDay())
-    );
+  let csv =
+    "Horário de Sede " +
+    firstDayOfWeek.toLocaleDateString() +
+    " - " +
+    lastDayOfWeek.toLocaleDateString() +
+    "\n\n";
 
-    let csv =
-      "Horário de Sede " +
+  users.forEach((user) => {
+    csv += user.username + ";" + user.totalWeeklyTime.toFixed(2) + "\n";
+  });
+
+  const attachment = new AttachmentBuilder(Buffer.from(csv), {
+    name:
+      "sede - " +
       firstDayOfWeek.toLocaleDateString() +
       " - " +
       lastDayOfWeek.toLocaleDateString() +
-      "\n\n";
+      ".csv",
+  });
 
-    users.forEach((user) => {
-      csv += user.username + ";" + user.totalWeeklyTime.toFixed(2) + "\n";
-    });
+  return attachment;
+};
 
-    const attachment = new AttachmentBuilder(Buffer.from(csv), {
-      name:
-        "sede - " +
-        firstDayOfWeek.toLocaleDateString() +
-        " - " +
-        lastDayOfWeek.toLocaleDateString() +
-        ".csv",
-    });
+// Exportar os dados da semana para um csv
 
+client.on("messageCreate", async (message) => {
+  if (message.content === "!exportar") {
+    const attachment = await exportar();
     message.reply({ files: [attachment] });
-
-    deleteAllActivities();
-
-    message.reply("O horário de sede foi resetado para essa semana.");
   }
 });
+
+client.on("messageCreate", async (message) => {
+  if (message.content === "!resetar") {
+    await deleteAllActivities();
+    message.reply("Dados de horário de sede resetados com sucesso!");
+  }
+});
+
+// Ás 23:59:59 de domingo, deletar todas as atividades e zerar o total de horas da semana
+schedule(
+  "09 23 * * 0",
+  () => {
+    const channel = client.channels.cache.get("1072269855471976449");
+    if (channel) {
+      (channel as TextChannel).send(
+        "Os horários de sede serão exportados, saia do canal de voz para que o bot registre sua saída."
+      );
+    }
+  },
+  {
+    scheduled: true,
+    timezone: "America/Sao_Paulo",
+  }
+);
+
+schedule(
+  "14 23 * * 0",
+  async () => {
+    console.log("Deletando atividades e zerando horas da semana...");
+    const channel = client.channels.cache.get("1072269855471976449");
+    if (channel) {
+      const attachment = await exportar();
+      (channel as TextChannel).send("Horário de sede da semana:");
+      (channel as TextChannel).send({ files: [attachment] });
+    }
+    await deleteAllActivities();
+  },
+  {
+    scheduled: true,
+    timezone: "America/Sao_Paulo",
+  }
+);
