@@ -21,9 +21,7 @@ const saideirasId = [
     process.env.ESTUDOS_ID,
 ];
 client.login(process.env.TOKEN);
-client.on("ready", () => {
-    console.log("Ready!");
-});
+client.on("ready", () => { });
 client.on("voiceStateUpdate", async (oldState, newState) => {
     if (saideirasId.includes(newState.channelId || oldState.channelId || ""))
         return;
@@ -194,7 +192,7 @@ client.on("messageCreate", async (message) => {
     }
 });
 (0, node_cron_1.schedule)("09 23 * * 0", () => {
-    const channel = client.channels.cache.get("1072269855471976449");
+    const channel = client.channels.cache.get("689264328062533699");
     if (channel) {
         channel.send("Os horários de sede serão exportados, saia do canal de voz para que o bot registre sua saída.");
     }
