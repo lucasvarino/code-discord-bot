@@ -21,5 +21,8 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "build": "tsc"
+  },
+  "engines": {
+    "node": ">=16.9.0"
   }
 }
