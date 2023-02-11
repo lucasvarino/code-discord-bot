@@ -27,9 +27,7 @@ const saideirasId = [
 
 client.login(process.env.TOKEN);
 
-client.on("ready", () => {
-  console.log("Ready!");
-});
+client.on("ready", () => {});
 
 client.on("voiceStateUpdate", async (oldState, newState) => {
   // Verificar se o canal de voz é o canal de voz da sede
@@ -267,7 +265,7 @@ client.on("messageCreate", async (message) => {
 schedule(
   "09 23 * * 0",
   () => {
-    const channel = client.channels.cache.get("1072269855471976449");
+    const channel = client.channels.cache.get("689264328062533699");
     if (channel) {
       (channel as TextChannel).send(
         "Os horários de sede serão exportados, saia do canal de voz para que o bot registre sua saída."
